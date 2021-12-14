@@ -1,0 +1,18 @@
+{
+  "name": "chakra-icons",
+  "version": "0.0.0",
+  "main": "dist/index.js",
+  "repository": "git@github.com:ri7nz/chakra-icons.git",
+  "author": "ri7nz <ri7nz@evilfactory.id>",
+  "license": "MIT",
+  "scripts": {
+    "generate": "./script/ngoding"
+  },
+  "dependencies": {
+    "@ri7nz/gittar": "^0.1.1-patch.3",
+    "create-chakra-icons": "1.0.3-next.1",
+    "glob": "7.2.0",
+    "js-yaml": "4.1.0",
+    "ora": "6.0.1"
+  }
+}
