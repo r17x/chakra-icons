@@ -5,7 +5,7 @@ icons:
     repository: Remix-Design/RemixIcon
     svgPath: icons
 
-  - name: Ionicons
+  - name: IonIcons
     repository: ionic-team/ionicons
     svgPath: src/svg
 
@@ -13,7 +13,7 @@ icons:
     repository: twbs/icons
     svgPath: icons
 
-  - name: Octicons 
+  - name: OctIcons
     repository: primer/octicons
     svgPath: icons
 

@@ -10,12 +10,20 @@
 "use strict";
 const promisify = require('util').promisify
 const fs = require('fs/promises');
+const fsExist = promisify(require('fs').exists)
 const path = require('path');
 const yaml = require('js-yaml');
 const gittar = require('@ri7nz/gittar');
 const create = require('create-chakra-icons/cli').main;
 const glob = promisify(require('glob').glob)
 const pascalCase = require('change-case').pascalCase
+const ora = require('ora')
+/**
+  * @typedef {Object} ResultIcon
+  * @property {string} input
+  * @property {string} output
+  * @property {string} name
+  */
 /**
  * @typedef {Object} Icon
  * @property {string} name
@@ -23,8 +31,8 @@ const pascalCase = require('change-case').pascalCase
  * @property {string} svgPath
  * @property {string?} tarPath
  * @property {string?} untarPath
- * @property {string?} sourcePath
- * @property {string?} outputPath
+ * @property {ResultIcon?} result
+ * @property {Object?} exports
  */
 
 /**
@@ -41,14 +49,18 @@ const fetchRepository = async (/** @type Icon */ icon) => {
     untarPath
   }
 }
-
-
-const createIcons = async (/** @type Promise<Icon> */ icon) => {
+/**
+  * @param {Promise<Icon>} Icon
+  * @return {Promise<Icon>} 
+  */
+const createIcons = async (icon) => {
   icon = await icon
   const input = path.join("data", icon.name, icon.svgPath)
   const inputs = await glob(`${input}/**/*.svg`)
 
-  inputs.forEach(async i => {
+  /** @type ResultIcon[] */
+  const result = inputs.reduce(async (acc, i) => {
+    acc = await acc
     const [fname] = path.basename(i).split('.')
     const n = pascalCase(fname)
 
@@ -63,10 +75,69 @@ const createIcons = async (/** @type Promise<Icon> */ icon) => {
       i,
       o
     })
+
+    return [...acc, {
+      input: i,
+      output: o,
+    }]
+  }, [])
+
+
+  return { ...icon, result: await result }
+}
+/**
+  * @param {Promise<Icon>} Icon
+  * @return {Promise<Icon>} 
+  */
+const createIndex = async (icon) => {
+  icon = await icon
+
+  const sourceDirs = icon.result.reduce((a, b) => {
+    const item = path.basename(path.resolve(b.output))
+    b = path.join(b.output.split('/').slice(0, -1).join('/'), `index.js`)
+    const indexJS = a.find(c => c.index === b)
+    if (!indexJS) {
+      a.push({
+        index: b,
+        items: [item]
+      })
+    }
+    else {
+      const index = a.indexOf(indexJS)
+      a[index] = { ...a[index], items: [...a[index].items, item] }
+    }
+    return a
+  }, [])
+
+
+  const toExportDeclaration = i => `export * from './${i}'`
+
+  sourceDirs.forEach(async (i) => {
+    await fs.writeFile(i.index, i.items.map(toExportDeclaration).join("\r\n"))
   })
 
+  const distPackageJson = path.join("dist", "package.json")
 
-  return icon
+  const pkgJson = JSON.parse(
+    await fs.readFile(
+      await fsExist(distPackageJson) ? distPackageJson :
+        "package.production.json"),
+    { encoding: "UTF-8" }
+  )
+
+  const exports = {
+    ...pkgJson.exports, ...sourceDirs.reduce((a, i) => {
+      const api = `./${i.index.split("/").slice(1, -1).join('/')}`
+      const entry = i.index.replace("dist", ".")
+      a[api] = entry
+      return a
+    }, {})
+  }
+
+
+  await fs.writeFile(distPackageJson, JSON.stringify({ ...pkgJson, exports }))
+
+  return { ...icon, exports }
 }
 
 async function run() {
@@ -76,8 +147,20 @@ async function run() {
   const tasks = icons
     .map((/** @type Icon */icon) => fetchRepository(icon))
     .map((/** @type Promise<Icon> */icon) => createIcons(icon))
+    .map((/** @type Promise<Icon> */icon) => createIndex(icon))
 
   return Promise.all(tasks)
 }
 
-run()
+const spinner = ora()
+spinner.start("Start generate packages `chakra-icons` ⚡️")
+
+run().then((/** @type Icon[] */ result) => {
+  const n = result.reduce((a, b) => a + b.result.length, 0)
+  const exported = Object.keys(result[result.length - 1].exports).length
+  spinner.succeed(`Completed: 
+Generate chakra-icons from ${n} files
+With ${exported} modules exported
+See details in ( \`dist\`)`
+  )
+})
